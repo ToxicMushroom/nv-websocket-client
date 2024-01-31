@@ -1224,30 +1224,10 @@ public class WebSocket
         instance.mMissingCloseFrameAllowed = mMissingCloseFrameAllowed;
         instance.mDirectTextMessage = mDirectTextMessage;
         instance.mFrameQueueSize = mFrameQueueSize;
-
-        // Copy listeners.
-        List<WebSocketListener> listeners = mListenerManager.getListeners();
-        synchronized (listeners)
-        {
-            instance.addListeners(listeners);
-        }
+        instance.addListeners(mListenerManager.getListeners());
 
         return instance;
     }
-
-
-    @Override
-    protected void finalize() throws Throwable
-    {
-        if (isInState(CREATED))
-        {
-            // The raw socket needs to be closed.
-            finish();
-        }
-
-        super.finalize();
-    }
-
 
     /**
      * Get the current state of this WebSocket.

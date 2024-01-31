@@ -15,10 +15,10 @@
  */
 package com.neovisionaries.ws.client;
 
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 import java.net.URI;
-import org.junit.Test;
 
 
 public class MiscTest

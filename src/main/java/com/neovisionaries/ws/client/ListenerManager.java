@@ -16,19 +16,16 @@
 package com.neovisionaries.ws.client;
 
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 
 class ListenerManager
 {
     private final WebSocket mWebSocket;
-    private final List<WebSocketListener> mListeners = new ArrayList<WebSocketListener>();
-
-    private boolean mSyncNeeded = true;
-    private List<WebSocketListener> mCopiedListeners;
-
+    private final List<WebSocketListener> mListeners = new CopyOnWriteArrayList<>();
 
     public ListenerManager(WebSocket websocket)
     {
@@ -49,11 +46,7 @@ class ListenerManager
             return;
         }
 
-        synchronized (mListeners)
-        {
-            mListeners.add(listener);
-            mSyncNeeded = true;
-        }
+        mListeners.add(listener);
     }
 
 
@@ -64,19 +57,7 @@ class ListenerManager
             return;
         }
 
-        synchronized (mListeners)
-        {
-            for (WebSocketListener listener : listeners)
-            {
-                if (listener == null)
-                {
-                    continue;
-                }
-
-                mListeners.add(listener);
-                mSyncNeeded = true;
-            }
-        }
+        mListeners.addAll(listeners.stream().filter(Objects::nonNull).toList());
     }
 
 
@@ -87,13 +68,7 @@ class ListenerManager
             return;
         }
 
-        synchronized (mListeners)
-        {
-            if (mListeners.remove(listener))
-            {
-                mSyncNeeded = true;
-            }
-        }
+        mListeners.remove(listener);
     }
 
 
@@ -104,70 +79,18 @@ class ListenerManager
             return;
         }
 
-        synchronized (mListeners)
-        {
-            for (WebSocketListener listener : listeners)
-            {
-                if (listener == null)
-                {
-                    continue;
-                }
-
-                if (mListeners.remove(listener))
-                {
-                    mSyncNeeded = true;
-                }
-            }
-        }
+        mListeners.removeAll(listeners.stream().filter(Objects::nonNull).toList());
     }
 
 
     public void clearListeners()
     {
-        synchronized (mListeners)
-        {
-            if (mListeners.size() == 0)
-            {
-                return;
-            }
-
-            mListeners.clear();
-            mCopiedListeners = null;
-            mSyncNeeded = true;
-        }
+        mListeners.clear();
     }
-
-
-    private List<WebSocketListener> getSynchronizedListeners()
-    {
-        synchronized (mListeners)
-        {
-            if (mSyncNeeded == false)
-            {
-                return mCopiedListeners;
-            }
-
-            // Copy mListeners to copiedListeners.
-            List<WebSocketListener> copiedListeners =
-                    new ArrayList<WebSocketListener>(mListeners.size());
-
-            for (WebSocketListener listener : mListeners)
-            {
-                copiedListeners.add(listener);
-            }
-
-            // Synchronize.
-            mCopiedListeners = copiedListeners;
-            mSyncNeeded      = false;
-
-            return copiedListeners;
-        }
-    }
-
 
     public void callOnStateChanged(WebSocketState newState)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -183,7 +106,7 @@ class ListenerManager
 
     public void callOnConnected(Map<String, List<String>> headers)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -199,7 +122,7 @@ class ListenerManager
 
     public void callOnConnectError(WebSocketException cause)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -217,7 +140,7 @@ class ListenerManager
         WebSocketFrame serverCloseFrame, WebSocketFrame clientCloseFrame,
         boolean closedByServer)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -234,7 +157,7 @@ class ListenerManager
 
     public void callOnFrame(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -250,7 +173,7 @@ class ListenerManager
 
     public void callOnContinuationFrame(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -266,7 +189,7 @@ class ListenerManager
 
     public void callOnTextFrame(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -282,7 +205,7 @@ class ListenerManager
 
     public void callOnBinaryFrame(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -298,7 +221,7 @@ class ListenerManager
 
     public void callOnCloseFrame(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -314,7 +237,7 @@ class ListenerManager
 
     public void callOnPingFrame(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -330,7 +253,7 @@ class ListenerManager
 
     public void callOnPongFrame(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -346,7 +269,7 @@ class ListenerManager
 
     public void callOnTextMessage(String message)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -362,7 +285,7 @@ class ListenerManager
 
     public void callOnTextMessage(byte[] data)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -378,7 +301,7 @@ class ListenerManager
 
     public void callOnBinaryMessage(byte[] message)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -394,7 +317,7 @@ class ListenerManager
 
     public void callOnSendingFrame(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -410,7 +333,7 @@ class ListenerManager
 
     public void callOnFrameSent(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -426,7 +349,7 @@ class ListenerManager
 
     public void callOnFrameUnsent(WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -442,7 +365,7 @@ class ListenerManager
 
     public void callOnThreadCreated(ThreadType threadType, Thread thread)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -458,7 +381,7 @@ class ListenerManager
 
     public void callOnThreadStarted(ThreadType threadType, Thread thread)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -474,7 +397,7 @@ class ListenerManager
 
     public void callOnThreadStopping(ThreadType threadType, Thread thread)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -490,7 +413,7 @@ class ListenerManager
 
     public void callOnError(WebSocketException cause)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -506,7 +429,7 @@ class ListenerManager
 
     public void callOnFrameError(WebSocketException cause, WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -522,7 +445,7 @@ class ListenerManager
 
     public void callOnMessageError(WebSocketException cause, List<WebSocketFrame> frames)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -538,7 +461,7 @@ class ListenerManager
 
     public void callOnMessageDecompressionError(WebSocketException cause, byte[] compressed)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -554,7 +477,7 @@ class ListenerManager
 
     public void callOnTextMessageError(WebSocketException cause, byte[] data)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -570,7 +493,7 @@ class ListenerManager
 
     public void callOnSendError(WebSocketException cause, WebSocketFrame frame)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -586,7 +509,7 @@ class ListenerManager
 
     public void callOnUnexpectedError(WebSocketException cause)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
@@ -614,7 +537,7 @@ class ListenerManager
 
     public void callOnSendingHandshake(String requestLine, List<String[]> headers)
     {
-        for (WebSocketListener listener : getSynchronizedListeners())
+        for (WebSocketListener listener : getListeners())
         {
             try
             {
