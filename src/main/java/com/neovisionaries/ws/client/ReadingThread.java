@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.neovisionaries.ws.client.StateManager.CloseInitiator;
 
@@ -41,9 +42,10 @@ class ReadingThread extends WebSocketThread
 {
     private boolean mStopRequested;
     private WebSocketFrame mCloseFrame;
-    private List<WebSocketFrame> mContinuation = new ArrayList<WebSocketFrame>();
+    private final List<WebSocketFrame> mContinuation = new ArrayList<>();
     private final PerMessageCompressionExtension mPMCE;
-    private Object mCloseLock = new Object();
+    private final ReentrantLock mCloseLock = new ReentrantLock();
+    private final ReentrantLock stopLock = new ReentrantLock();
     private Timer mCloseTimer;
     private CloseTask mCloseTask;
     private long mCloseDelay;
@@ -89,12 +91,9 @@ class ReadingThread extends WebSocketThread
 
         while (true)
         {
-            synchronized (this)
+            if (mStopRequested)
             {
-                if (mStopRequested)
-                {
-                    break;
-                }
+                break;
             }
 
             // Receive a frame from the server.
@@ -125,14 +124,15 @@ class ReadingThread extends WebSocketThread
 
     void requestStop(long closeDelay)
     {
-        synchronized (this)
-        {
-            if (mStopRequested)
-            {
+        stopLock.lock();
+        try {
+            if (mStopRequested) {
                 return;
             }
 
             mStopRequested = true;
+        } finally {
+            stopLock.unlock();
         }
 
         // interrupt() may not interrupt a blocking socket read(), so calling
@@ -1012,14 +1012,14 @@ class ReadingThread extends WebSocketThread
 
         boolean stateChanged = false;
 
-        synchronized (manager)
-        {
+        ReentrantLock reel = manager.getReentrantLock();
+        reel.lock();
+        try {
             // The current state of the web socket.
             WebSocketState state = manager.getState();
 
             // If the current state is neither CLOSING nor CLOSED.
-            if (state != CLOSING && state != CLOSED)
-            {
+            if (state != CLOSING && state != CLOSED) {
                 // Change the state to CLOSING.
                 manager.changeToClosing(CloseInitiator.SERVER);
 
@@ -1037,6 +1037,8 @@ class ReadingThread extends WebSocketThread
 
                 stateChanged = true;
             }
+        } finally {
+            reel.unlock();
         }
 
         if (stateChanged)
@@ -1143,10 +1145,12 @@ class ReadingThread extends WebSocketThread
 
     private void scheduleClose()
     {
-        synchronized (mCloseLock)
-        {
+        mCloseLock.lock();
+        try {
             cancelCloseTask();
             scheduleCloseTask();
+        } finally {
+            mCloseLock.unlock();
         }
     }
 
@@ -1161,9 +1165,11 @@ class ReadingThread extends WebSocketThread
 
     private void cancelClose()
     {
-        synchronized (mCloseLock)
-        {
+        mCloseLock.lock();
+        try {
             cancelCloseTask();
+        } finally {
+            mCloseLock.unlock();
         }
     }
 

@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 
 
 class HandshakeBuilder
@@ -30,6 +31,7 @@ class HandshakeBuilder
     private static final String[] VERSION_HEADER    = { "Sec-WebSocket-Version", "13" };
     private static final String RN = "\r\n";
 
+    private final ReentrantLock reentrantLock = new ReentrantLock();
 
     private boolean mSecure;
     private String mUserInfo;
@@ -79,10 +81,9 @@ class HandshakeBuilder
                 "U+0021 to U+007E not including separator characters.");
         }
 
-        synchronized (this)
-        {
-            if (mProtocols == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mProtocols == null) {
                 // 'LinkedHashSet' is used because the elements
                 // "MUST all be unique strings" and must be
                 // "ordered by preference. See RFC 6455, p18, 10.
@@ -90,6 +91,8 @@ class HandshakeBuilder
             }
 
             mProtocols.add(protocol);
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -101,28 +104,30 @@ class HandshakeBuilder
             return;
         }
 
-        synchronized (this)
-        {
-            if (mProtocols == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mProtocols == null) {
                 return;
             }
 
             mProtocols.remove(protocol);
 
-            if (mProtocols.size() == 0)
-            {
+            if (mProtocols.size() == 0) {
                 mProtocols = null;
             }
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
 
     public void clearProtocols()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mProtocols = null;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -152,14 +157,15 @@ class HandshakeBuilder
 
     public boolean containsProtocol(String protocol)
     {
-        synchronized (this)
-        {
-            if (mProtocols == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mProtocols == null) {
                 return false;
             }
 
             return mProtocols.contains(protocol);
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -171,14 +177,15 @@ class HandshakeBuilder
             return;
         }
 
-        synchronized (this)
-        {
-            if (mExtensions == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mExtensions == null) {
                 mExtensions = new ArrayList<WebSocketExtension>();
             }
 
             mExtensions.add(extension);
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -196,19 +203,19 @@ class HandshakeBuilder
             return;
         }
 
-        synchronized (this)
-        {
-            if (mExtensions == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mExtensions == null) {
                 return;
             }
 
             mExtensions.remove(extension);
 
-            if (mExtensions.size() == 0)
-            {
+            if (mExtensions.size() == 0) {
                 mExtensions = null;
             }
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -220,41 +227,40 @@ class HandshakeBuilder
             return;
         }
 
-        synchronized (this)
-        {
-            if (mExtensions == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mExtensions == null) {
                 return;
             }
 
             List<WebSocketExtension> extensionsToRemove = new ArrayList<WebSocketExtension>();
 
-            for (WebSocketExtension extension : mExtensions)
-            {
-                if (extension.getName().equals(name))
-                {
+            for (WebSocketExtension extension : mExtensions) {
+                if (extension.getName().equals(name)) {
                     extensionsToRemove.add(extension);
                 }
             }
 
-            for (WebSocketExtension extension : extensionsToRemove)
-            {
+            for (WebSocketExtension extension : extensionsToRemove) {
                 mExtensions.remove(extension);
             }
 
-            if (mExtensions.size() == 0)
-            {
+            if (mExtensions.size() == 0) {
                 mExtensions = null;
             }
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
 
     public void clearExtensions()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mExtensions = null;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -266,14 +272,15 @@ class HandshakeBuilder
             return false;
         }
 
-        synchronized (this)
-        {
-            if (mExtensions == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mExtensions == null) {
                 return false;
             }
 
             return mExtensions.contains(extension);
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -285,22 +292,21 @@ class HandshakeBuilder
             return false;
         }
 
-        synchronized (this)
-        {
-            if (mExtensions == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mExtensions == null) {
                 return false;
             }
 
-            for (WebSocketExtension extension : mExtensions)
-            {
-                if (extension.getName().equals(name))
-                {
+            for (WebSocketExtension extension : mExtensions) {
+                if (extension.getName().equals(name)) {
                     return true;
                 }
             }
 
             return false;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -317,14 +323,15 @@ class HandshakeBuilder
             value = "";
         }
 
-        synchronized (this)
-        {
-            if (mHeaders == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mHeaders == null) {
                 mHeaders = new ArrayList<String[]>();
             }
 
-            mHeaders.add(new String[] { name, value });
+            mHeaders.add(new String[]{name, value});
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -336,50 +343,51 @@ class HandshakeBuilder
             return;
         }
 
-        synchronized (this)
-        {
-            if (mHeaders == null)
-            {
+        reentrantLock.lock();
+        try {
+            if (mHeaders == null) {
                 return;
             }
 
             List<String[]> headersToRemove = new ArrayList<String[]>();
 
-            for (String[] header : mHeaders)
-            {
-                if (header[0].equals(name))
-                {
+            for (String[] header : mHeaders) {
+                if (header[0].equals(name)) {
                     headersToRemove.add(header);
                 }
             }
 
-            for (String[] header : headersToRemove)
-            {
+            for (String[] header : headersToRemove) {
                 mHeaders.remove(header);
             }
 
-            if (mHeaders.size() == 0)
-            {
+            if (mHeaders.size() == 0) {
                 mHeaders = null;
             }
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
 
     public void clearHeaders()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mHeaders = null;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
 
     public void setUserInfo(String userInfo)
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mUserInfo = userInfo;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -404,9 +412,11 @@ class HandshakeBuilder
 
     public void clearUserInfo()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mUserInfo = null;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 

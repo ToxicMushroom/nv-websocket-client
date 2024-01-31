@@ -18,6 +18,7 @@ package com.neovisionaries.ws.client;
 
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.locks.ReentrantLock;
 
 
 abstract class PeriodicalFrameSender
@@ -28,6 +29,8 @@ abstract class PeriodicalFrameSender
     private boolean mScheduled;
     private long mInterval;
     private PayloadGenerator mGenerator;
+
+    private ReentrantLock reentrantLock = new ReentrantLock();
 
 
     public PeriodicalFrameSender(
@@ -47,8 +50,8 @@ abstract class PeriodicalFrameSender
 
     public void stop()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             if (mTimer == null)
             {
                 return;
@@ -56,15 +59,19 @@ abstract class PeriodicalFrameSender
 
             mScheduled = false;
             mTimer.cancel();
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
 
     public long getInterval()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             return mInterval;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -76,9 +83,11 @@ abstract class PeriodicalFrameSender
             interval = 0;
         }
 
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mInterval = interval;
+        } finally {
+            reentrantLock.unlock();
         }
 
         if (interval == 0)
@@ -91,42 +100,43 @@ abstract class PeriodicalFrameSender
             return;
         }
 
-        synchronized (this)
-        {
-            if (mTimer == null)
-            {
-                if (mTimerName == null)
-                {
+        reentrantLock.lock();
+        try {
+            if (mTimer == null) {
+                if (mTimerName == null) {
                     mTimer = new Timer();
-                }
-                else
-                {
+                } else {
                     mTimer = new Timer(mTimerName);
                 }
             }
 
-            if (mScheduled == false)
-            {
+            if (mScheduled == false) {
                 mScheduled = schedule(mTimer, new Task(), interval);
             }
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
 
     public PayloadGenerator getPayloadGenerator()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             return mGenerator;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
 
     public void setPayloadGenerator(PayloadGenerator generator)
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mGenerator = generator;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -139,9 +149,11 @@ abstract class PeriodicalFrameSender
 
     public void setTimerName(String timerName)
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mTimerName = timerName;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -158,10 +170,9 @@ abstract class PeriodicalFrameSender
 
     private void doTask()
     {
-        synchronized (this)
-        {
-            if (mInterval == 0 || mWebSocket.isOpen() == false)
-            {
+        reentrantLock.lock();
+        try {
+            if (mInterval == 0 || mWebSocket.isOpen() == false) {
                 mScheduled = false;
 
                 // Not schedule a new task.
@@ -173,6 +184,8 @@ abstract class PeriodicalFrameSender
 
             // Schedule a new task.
             mScheduled = schedule(mTimer, new Task(), mInterval);
+        } finally {
+            reentrantLock.unlock();
         }
     }
 

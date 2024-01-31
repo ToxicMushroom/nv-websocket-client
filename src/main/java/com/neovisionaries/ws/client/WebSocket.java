@@ -29,6 +29,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.neovisionaries.ws.client.StateManager.CloseInitiator;
 
@@ -1109,7 +1110,7 @@ public class WebSocket
     private final ListenerManager mListenerManager;
     private final PingSender mPingSender;
     private final PongSender mPongSender;
-    private final Object mThreadsLock = new Object();
+    private final ReentrantLock mThreadsLock = new ReentrantLock();
     private WebSocketInputStream mInput;
     private WebSocketOutputStream mOutput;
     private ReadingThread mReadingThread;
@@ -1124,7 +1125,7 @@ public class WebSocket
     private int mFrameQueueSize;
     private int mMaxPayloadSize;
     private boolean mOnConnectedCalled;
-    private Object mOnConnectedCalledLock = new Object();
+    private final ReentrantLock mOnConnectedCalledLock = new ReentrantLock();
     private boolean mReadingThreadStarted;
     private boolean mWritingThreadStarted;
     private boolean mReadingThreadFinished;
@@ -1254,9 +1255,12 @@ public class WebSocket
      */
     public WebSocketState getState()
     {
-        synchronized (mStateManager)
-        {
+        ReentrantLock reel = mStateManager.getReentrantLock();
+        reel.lock();
+        try {
             return mStateManager.getState();
+        } finally {
+            reel.unlock();
         }
     }
 
@@ -1281,9 +1285,12 @@ public class WebSocket
      */
     private boolean isInState(WebSocketState state)
     {
-        synchronized (mStateManager)
-        {
+        ReentrantLock reel = mStateManager.getReentrantLock();
+        reel.lock();
+        try {
             return (mStateManager.getState() == state);
+        } finally {
+            reel.unlock();
         }
     }
 
@@ -1743,14 +1750,16 @@ public class WebSocket
      */
     public WebSocket flush()
     {
-        synchronized (mStateManager)
-        {
+        ReentrantLock reel = mStateManager.getReentrantLock();
+        reel.lock();
+        try {
             WebSocketState state = mStateManager.getState();
 
-            if (state != OPEN && state != CLOSING)
-            {
+            if (state != OPEN && state != CLOSING) {
                 return this;
             }
+        } finally {
+            reel.unlock();
         }
 
         // Get the reference to the instance of WritingThread.
@@ -2597,10 +2606,10 @@ public class WebSocket
      */
     public WebSocket disconnect(int closeCode, String reason, long closeDelay)
     {
-        synchronized (mStateManager)
-        {
-            switch (mStateManager.getState())
-            {
+        ReentrantLock reel = mStateManager.getReentrantLock();
+        reel.lock();
+        try {
+            switch (mStateManager.getState()) {
                 case CREATED:
                     finishAsynchronously();
                     return this;
@@ -2629,6 +2638,8 @@ public class WebSocket
 
             // Send the close frame to the server.
             sendFrame(frame);
+        } finally {
+            reel.unlock();
         }
 
         // Notify the listeners of the state change.
@@ -2725,14 +2736,16 @@ public class WebSocket
             return this;
         }
 
-        synchronized (mStateManager)
-        {
+        ReentrantLock reel = mStateManager.getReentrantLock();
+        reel.lock();
+        try {
             WebSocketState state = mStateManager.getState();
 
-            if (state != OPEN && state != CLOSING)
-            {
+            if (state != OPEN && state != CLOSING) {
                 return this;
             }
+        } finally {
+            reel.unlock();
         }
 
         // The current state is either OPEN or CLOSING. Or, CLOSED.
@@ -3259,18 +3272,20 @@ public class WebSocket
 
     private void changeStateOnConnect() throws WebSocketException
     {
-        synchronized (mStateManager)
-        {
+        ReentrantLock reel = mStateManager.getReentrantLock();
+        reel.lock();
+        try {
             // If the current state is not CREATED.
-            if (mStateManager.getState() != CREATED)
-            {
+            if (mStateManager.getState() != CREATED) {
                 throw new WebSocketException(
-                    WebSocketError.NOT_IN_CREATED_STATE,
-                    "The current state of the WebSocket is not CREATED.");
+                        WebSocketError.NOT_IN_CREATED_STATE,
+                        "The current state of the WebSocket is not CREATED.");
             }
 
             // Change the state to CONNECTING.
             mStateManager.setState(CONNECTING);
+        } finally {
+            reel.unlock();
         }
 
         // Notify the listeners of the state change.
@@ -3437,10 +3452,12 @@ public class WebSocket
         ReadingThread readingThread = new ReadingThread(mThreadFactory, this);
         WritingThread writingThread = new WritingThread(mThreadFactory, this);
 
-        synchronized (mThreadsLock)
-        {
+        mThreadsLock.lock();
+        try {
             mReadingThread = readingThread;
             mWritingThread = writingThread;
+        } finally {
+            mThreadsLock.unlock();
         }
 
         // Execute onThreadCreated of the listeners.
@@ -3468,13 +3485,15 @@ public class WebSocket
         ReadingThread readingThread;
         WritingThread writingThread;
 
-        synchronized (mThreadsLock)
-        {
+        mThreadsLock.lock();
+        try {
             readingThread = mReadingThread;
             writingThread = mWritingThread;
 
             mReadingThread = null;
             mWritingThread = null;
+        } finally {
+            mThreadsLock.unlock();
         }
 
         if (readingThread != null)
@@ -3559,15 +3578,16 @@ public class WebSocket
     {
         boolean bothStarted = false;
 
-        synchronized (mThreadsLock)
-        {
+        mThreadsLock.lock();
+        try {
             mReadingThreadStarted = true;
 
-            if (mWritingThreadStarted)
-            {
+            if (mWritingThreadStarted) {
                 // Both the reading thread and the writing thread have started.
                 bothStarted = true;
             }
+        } finally {
+            mThreadsLock.unlock();
         }
 
         // Call onConnected() method of listeners if not called yet.
@@ -3588,15 +3608,16 @@ public class WebSocket
     {
         boolean bothStarted = false;
 
-        synchronized (mThreadsLock)
-        {
+        mThreadsLock.lock();
+        try {
             mWritingThreadStarted = true;
 
-            if (mReadingThreadStarted)
-            {
+            if (mReadingThreadStarted) {
                 // Both the reading thread and the writing thread have started.
                 bothStarted = true;
             }
+        } finally {
+            mThreadsLock.unlock();
         }
 
         // Call onConnected() method of listeners if not called yet.
@@ -3617,16 +3638,17 @@ public class WebSocket
      */
     private void callOnConnectedIfNotYet()
     {
-        synchronized (mOnConnectedCalledLock)
-        {
+        mOnConnectedCalledLock.lock();
+        try {
             // If onConnected() has already been called.
-            if (mOnConnectedCalled)
-            {
+            if (mOnConnectedCalled) {
                 // Do not call onConnected() twice.
                 return;
             }
 
             mOnConnectedCalled = true;
+        } finally {
+            mOnConnectedCalledLock.unlock();
         }
 
         // Notify the listeners that the handshake succeeded.
@@ -3655,16 +3677,17 @@ public class WebSocket
      */
     void onReadingThreadFinished(WebSocketFrame closeFrame)
     {
-        synchronized (mThreadsLock)
-        {
+        mThreadsLock.lock();
+        try {
             mReadingThreadFinished = true;
             mServerCloseFrame = closeFrame;
 
-            if (mWritingThreadFinished == false)
-            {
+            if (mWritingThreadFinished == false) {
                 // Wait for the writing thread to finish.
                 return;
             }
+        } finally {
+            mThreadsLock.unlock();
         }
 
         // Both the reading thread and the writing thread have finished.
@@ -3677,16 +3700,17 @@ public class WebSocket
      */
     void onWritingThreadFinished(WebSocketFrame closeFrame)
     {
-        synchronized (mThreadsLock)
-        {
+        mThreadsLock.lock();
+        try {
             mWritingThreadFinished = true;
             mClientCloseFrame = closeFrame;
 
-            if (mReadingThreadFinished == false)
-            {
+            if (mReadingThreadFinished == false) {
                 // Wait for the reading thread to finish.
                 return;
             }
+        } finally {
+            mThreadsLock.unlock();
         }
 
         // Both the reading thread and the writing thread have finished.
@@ -3725,10 +3749,13 @@ public class WebSocket
             }
         }
 
-        synchronized (mStateManager)
-        {
+        ReentrantLock reel = mStateManager.getReentrantLock();
+        reel.lock();
+        try {
             // Change the state to CLOSED.
             mStateManager.setState(CLOSED);
+        } finally {
+            reel.unlock();
         }
 
         // Notify the listeners of the state change.

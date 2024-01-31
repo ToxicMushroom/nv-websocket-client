@@ -21,6 +21,8 @@ import static com.neovisionaries.ws.client.WebSocketState.CLOSING;
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.neovisionaries.ws.client.StateManager.CloseInitiator;
 
@@ -34,6 +36,8 @@ class WritingThread extends WebSocketThread
     private static final int FLUSH_THRESHOLD = 1000;
     private final LinkedList<WebSocketFrame> mFrames;
     private final PerMessageCompressionExtension mPMCE;
+    private final ReentrantLock reentrantLock = new ReentrantLock();
+    private final Condition condition = this.reentrantLock.newCondition();
     private boolean mStopRequested;
     private WebSocketFrame mCloseFrame;
     private boolean mFlushNeeded;
@@ -69,11 +73,13 @@ class WritingThread extends WebSocketThread
             manager.callOnUnexpectedError(cause);
         }
 
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             // Mainly for queueFrame().
             mStopped = true;
-            notifyAll();
+            condition.signalAll();
+        } finally {
+            reentrantLock.unlock();
         }
 
         // Notify this writing thread finished.
@@ -130,41 +136,39 @@ class WritingThread extends WebSocketThread
 
     public void requestStop()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             // Schedule stopping.
             mStopRequested = true;
 
             // Wake up this thread.
-            notifyAll();
+            condition.signalAll();
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
 
     public boolean queueFrame(WebSocketFrame frame)
     {
-        synchronized (this)
-        {
-            while (true)
-            {
+        reentrantLock.lock();
+        try {
+            while (true) {
                 // If this thread has already stopped.
-                if (mStopped)
-                {
+                if (mStopped) {
                     // Frames won't be sent any more. Not queued.
                     return false;
                 }
 
                 // If this thread has been requested to stop or has sent a
                 // close frame to the server.
-                if (mStopRequested || mCloseFrame != null)
-                {
+                if (mStopRequested || mCloseFrame != null) {
                     // Don't wait. Process the remaining task without delay.
                     break;
                 }
 
                 // If the frame is a control frame.
-                if (frame.isControlFrame())
-                {
+                if (frame.isControlFrame()) {
                     // Queue the frame without blocking.
                     break;
                 }
@@ -173,43 +177,37 @@ class WritingThread extends WebSocketThread
                 int queueSize = mWebSocket.getFrameQueueSize();
 
                 // If the upper limit is not set.
-                if (queueSize == 0)
-                {
+                if (queueSize == 0) {
                     // Add the frame to mFrames unconditionally.
                     break;
                 }
 
                 // If the current queue size has not reached the upper limit.
-                if (mFrames.size() < queueSize)
-                {
+                if (mFrames.size() < queueSize) {
                     // Add the frame.
                     break;
                 }
 
-                try
-                {
+                try {
                     // Wait until the queue gets spaces.
-                    wait();
-                }
-                catch (InterruptedException e)
-                {
+                    condition.await();
+                } catch (InterruptedException e) {
                 }
             }
 
             // Add the frame to the queue.
-            if (isHighPriorityFrame(frame))
-            {
+            if (isHighPriorityFrame(frame)) {
                 // Add the frame at the first position so that it can be sent immediately.
                 addHighPriorityFrame(frame);
-            }
-            else
-            {
+            } else {
                 // Add the frame at the last position.
                 mFrames.addLast(frame);
             }
 
             // Wake up this thread.
-            notifyAll();
+            condition.signalAll();
+        } finally {
+            reentrantLock.unlock();
         }
 
         // Queued.
@@ -246,12 +244,14 @@ class WritingThread extends WebSocketThread
 
     public void queueFlush()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             mFlushNeeded = true;
 
             // Wake up this thread.
-            notifyAll();
+            condition.signalAll();
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
@@ -276,50 +276,40 @@ class WritingThread extends WebSocketThread
 
     private int waitForFrames()
     {
-        synchronized (this)
-        {
+        reentrantLock.lock();
+        try {
             // If this thread has been requested to stop.
-            if (mStopRequested)
-            {
+            if (mStopRequested) {
                 return SHOULD_STOP;
             }
 
             // If a close frame has already been sent.
-            if (mCloseFrame != null)
-            {
+            if (mCloseFrame != null) {
                 return SHOULD_STOP;
             }
 
             // If the list of web socket frames to be sent is empty.
-            if (mFrames.size() == 0)
-            {
+            if (mFrames.size() == 0) {
                 // Check mFlushNeeded before calling wait().
-                if (mFlushNeeded)
-                {
+                if (mFlushNeeded) {
                     mFlushNeeded = false;
                     return SHOULD_FLUSH;
                 }
 
-                try
-                {
+                try {
                     // Wait until a new frame is added to the list
                     // or this thread is requested to stop.
-                    wait();
-                }
-                catch (InterruptedException e)
-                {
+                    condition.await();
+                } catch (InterruptedException e) {
                 }
             }
 
-            if (mStopRequested)
-            {
+            if (mStopRequested) {
                 return SHOULD_STOP;
             }
 
-            if (mFrames.size() == 0)
-            {
-                if (mFlushNeeded)
-                {
+            if (mFrames.size() == 0) {
+                if (mFlushNeeded) {
                     mFlushNeeded = false;
                     return SHOULD_FLUSH;
                 }
@@ -327,6 +317,8 @@ class WritingThread extends WebSocketThread
                 // Spurious wakeup.
                 return SHOULD_CONTINUE;
             }
+        } finally {
+            reentrantLock.unlock();
         }
 
         return SHOULD_SEND;
@@ -342,20 +334,21 @@ class WritingThread extends WebSocketThread
         {
             WebSocketFrame frame;
 
-            synchronized (this)
-            {
+            reentrantLock.lock();
+            try {
                 // Pick up one frame from the queue.
                 frame = mFrames.poll();
 
                 // Mainly for queueFrame().
-                notifyAll();
+                condition.signalAll();
 
                 // If the queue is empty.
-                if (frame == null)
-                {
+                if (frame == null) {
                     // No frame to process.
                     break;
                 }
+            } finally {
+                reentrantLock.unlock();
             }
 
             // Send the frame to the server.
@@ -423,9 +416,11 @@ class WritingThread extends WebSocketThread
             // Flush
             flush();
 
-            synchronized (this)
-            {
+            reentrantLock.lock();
+            try {
                 mFlushNeeded = false;
+            } finally {
+                reentrantLock.unlock();
             }
         }
         catch (IOException e)
@@ -513,19 +508,21 @@ class WritingThread extends WebSocketThread
 
         boolean stateChanged = false;
 
-        synchronized (manager)
-        {
+        ReentrantLock reel = manager.getReentrantLock();
+        reel.lock();
+        try {
             // The current state of the web socket.
             WebSocketState state = manager.getState();
 
             // If the current state is neither CLOSING nor CLOSED.
-            if (state != CLOSING && state != CLOSED)
-            {
+            if (state != CLOSING && state != CLOSED) {
                 // Change the state to CLOSING.
                 manager.changeToClosing(CloseInitiator.CLIENT);
 
                 stateChanged = true;
             }
+        } finally {
+            reel.unlock();
         }
 
         if (stateChanged)

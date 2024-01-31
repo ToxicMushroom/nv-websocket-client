@@ -16,12 +16,20 @@
 package com.neovisionaries.ws.client;
 
 
+import java.util.concurrent.locks.ReentrantLock;
+
 import static com.neovisionaries.ws.client.WebSocketState.CLOSING;
 import static com.neovisionaries.ws.client.WebSocketState.CREATED;
 
 
 class StateManager
 {
+    ReentrantLock reentrantLock = new ReentrantLock();
+
+    public ReentrantLock getReentrantLock() {
+        return reentrantLock;
+    }
+
     enum CloseInitiator
     {
         NONE,

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.net.SocketFactory;
 
@@ -78,6 +79,8 @@ public class SocketInitiator {
     private class SocketRacer extends Thread
     {
         private final SocketFuture mFuture;
+        private final ReentrantLock mFutureLock = new ReentrantLock();
+
         private final SocketFactory mSocketFactory;
         private final SocketAddress mSocketAddress;
         private String[] mServerNames;
@@ -149,8 +152,8 @@ public class SocketInitiator {
 
         private void complete(Socket socket)
         {
-            synchronized (mFuture)
-            {
+            mFutureLock.lock();
+            try {
                 // Check if already completed or aborted.
                 if (mDoneSignal.isDone()) {
                     return;
@@ -161,17 +164,18 @@ public class SocketInitiator {
 
                 // Socket racer complete.
                 mDoneSignal.done();
+            } finally {
+                mFutureLock.unlock();
             }
         }
 
 
         void abort(Exception exception)
         {
-            synchronized (mFuture)
-            {
+            mFutureLock.lock();
+            try {
                 // Check if already completed or aborted.
-                if (mDoneSignal.isDone())
-                {
+                if (mDoneSignal.isDone()) {
                     return;
                 }
 
@@ -180,6 +184,8 @@ public class SocketInitiator {
 
                 // Socket racer complete.
                 mDoneSignal.done();
+            } finally {
+                mFutureLock.unlock();
             }
         }
     }
@@ -207,71 +213,76 @@ public class SocketInitiator {
         private Socket mSocket;
         private Exception mException;
 
+        private final ReentrantLock reentrantLock = new ReentrantLock();
 
-        synchronized boolean hasSocket()
+        boolean hasSocket()
         {
-            return mSocket != null;
+            reentrantLock.lock();
+            try {
+                return mSocket != null;
+            } finally {
+                reentrantLock.unlock();
+            }
         }
 
 
-        synchronized void setSocket(SocketRacer current, Socket socket)
+        void setSocket(SocketRacer current, Socket socket)
         {
-            // Sanity check.
-            if (mLatch == null || mRacers == null)
-            {
-                throw new IllegalStateException("Cannot set socket before awaiting!");
-            }
+            reentrantLock.lock();
+            try {
+                // Sanity check.
+                if (mLatch == null || mRacers == null) {
+                    throw new IllegalStateException("Cannot set socket before awaiting!");
+                }
 
-            // Set socket if not already set, otherwise close socket.
-            if (mSocket == null)
-            {
-                mSocket = socket;
+                // Set socket if not already set, otherwise close socket.
+                if (mSocket == null) {
+                    mSocket = socket;
 
-                // Stop all other racers.
-                for (SocketRacer racer: mRacers)
-                {
-                    // Skip instance that is setting the socket.
-                    if (racer == current)
-                    {
-                        continue;
+                    // Stop all other racers.
+                    for (SocketRacer racer : mRacers) {
+                        // Skip instance that is setting the socket.
+                        if (racer == current) {
+                            continue;
+                        }
+                        racer.abort(new InterruptedException());
+                        racer.interrupt();
                     }
-                    racer.abort(new InterruptedException());
-                    racer.interrupt();
+                } else {
+                    try {
+                        socket.close();
+                    } catch (IOException e) {
+                        // ignored
+                    }
                 }
-            }
-            else
-            {
-                try
-                {
-                    socket.close();
-                }
-                catch (IOException e)
-                {
-                    // ignored
-                }
-            }
 
-            // Racer complete.
-            mLatch.countDown();
+                // Racer complete.
+                mLatch.countDown();
+            } finally {
+                reentrantLock.unlock();
+            }
         }
 
 
-        synchronized void setException(Exception exception)
+        void setException(Exception exception)
         {
-            // Sanity check.
-            if (mLatch == null || mRacers == null)
-            {
-                throw new IllegalStateException("Cannot set exception before awaiting!");
-            }
+            reentrantLock.lock();
+            try {
+                // Sanity check.
+                if (mLatch == null || mRacers == null) {
+                    throw new IllegalStateException("Cannot set exception before awaiting!");
+                }
 
-            // Set exception if not already set.
-            if (mException == null)
-            {
-                mException = exception;
-            }
+                // Set exception if not already set.
+                if (mException == null) {
+                    mException = exception;
+                }
 
-            // Racer complete.
-            mLatch.countDown();
+                // Racer complete.
+                mLatch.countDown();
+            } finally {
+                reentrantLock.unlock();
+            }
         }
 
 
